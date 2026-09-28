@@ -1,0 +1,23 @@
+{
+  "name": "postcov",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Life after COVID. It's not the same. An anonymous board where people say what changed.",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/seed.js",
+    "test": "node --test 'test/**/*.test.js'",
+    "syntax": "for f in src/*.js public/app.js test/*.js; do node --check \"$f\" || exit 1; done",
+    "check": "npm run syntax && npm test"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}

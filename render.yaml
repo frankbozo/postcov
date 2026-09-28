@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: postcov
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: REVIEW_ALL
+        value: "false"
+      # Paste your Neon (or other Postgres) connection string in the
+      # Render dashboard after the first deploy.
+      - key: DATABASE_URL
+        sync: false
+      - key: SITE_ORIGIN
+        value: https://postcov.com
