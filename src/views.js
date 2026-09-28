@@ -1,11 +1,11 @@
 import { escapeHtml } from './lib.js';
 
 // Bump on every deploy that touches public/ so browsers drop their cached copy.
-const ASSET_VERSION = '2026-09-28a';
+const ASSET_VERSION = '2026-09-28b';
 
 const DEFAULT_TITLE = 'postcov';
 const DEFAULT_DESC =
-  "Life after COVID. It's not the same. People saying what changed, anonymously.";
+  'We went back to normal. But did we? A living record of what the pandemic changed, told by the people it happened to.';
 
 export function shell({ view, origin = '', meta = {}, bootstrap = {} }) {
   const title = meta.title || DEFAULT_TITLE;

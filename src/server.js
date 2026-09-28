@@ -9,7 +9,7 @@ import {
   needsReview, safeSourceUrl, clamp, REALITY_THRESHOLD, postId, adminToken, safeEqual,
 } from './lib.js';
 import { shell } from './views.js';
-import { notifySubmission, notifyStatus } from './notify.js';
+import { notifySubmission, notifyStatus, notifySubscriber } from './notify.js';
 import { loadSeed, insertRows } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -90,6 +90,10 @@ function shapePost(p, mine = {}) {
     plausibilityVotes: p.plaus_n,
     blackMarked: isBlackMarked(p),
     createdAt: p.created_at,
+    then: p.then_text || '',
+    now: p.now_text || '',
+    when: p.when_label || '',
+    place: p.place || '',
     myVote: mine.vote ?? 0,
     myPlausibility: mine.plaus ?? null,
     iFlagged: mine.reality ?? false,
@@ -143,13 +147,15 @@ app.get('/api/posts', async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const perPage = 25;
     const voter = readVoter(req);
+    const desk = String(req.query.desk || '').trim().slice(0, 32);
+    const deskSql = desk ? ` AND desk = '${desk.replace(/[^a-z]/g, '')}'` : '';
 
     // "hot" needs the whole live set to rank, so keep the live set modest;
     // the other two sort in SQL and page properly.
     let rows;
     if (sort === 'hot') {
       const all = await q(
-        `SELECT * FROM posts WHERE status = 'live' AND publish_at <= NOW() ORDER BY created_at DESC LIMIT 500`,
+        `SELECT * FROM posts WHERE status = 'live' AND publish_at <= NOW()${deskSql} ORDER BY created_at DESC LIMIT 500`,
       );
       rows = all.rows
         .sort((a, b) => hotScore(b) - hotScore(a))
@@ -157,14 +163,14 @@ app.get('/api/posts', async (req, res, next) => {
     } else {
       const order = sort === 'new' ? 'created_at DESC' : '(ups - downs) DESC, created_at DESC';
       const r = await q(
-        `SELECT * FROM posts WHERE status = 'live' AND publish_at <= NOW() ORDER BY ${order} LIMIT $1 OFFSET $2`,
+        `SELECT * FROM posts WHERE status = 'live' AND publish_at <= NOW()${deskSql} ORDER BY ${order} LIMIT $1 OFFSET $2`,
         [perPage, (page - 1) * perPage],
       );
       rows = r.rows;
     }
 
     const mine = await myState(voter, rows.map((r) => r.id));
-    const total = await q(`SELECT COUNT(*)::int AS n FROM posts WHERE status = 'live' AND publish_at <= NOW()`);
+    const total = await q(`SELECT COUNT(*)::int AS n FROM posts WHERE status = 'live' AND publish_at <= NOW()${deskSql}`);
 
     res.json({
       posts: rows.map((p) => shapePost(p, mine[p.id] || {})),
@@ -233,37 +239,46 @@ app.post('/api/posts', async (req, res, next) => {
     }
 
     const voter = voterOf(req, res);
-    const headline = String(req.body.headline || '').trim();
+    const thenText = String(req.body.then || '').trim();
+    const nowText = String(req.body.now || '').trim();
     const body = String(req.body.body || '').trim();
-    const author = String(req.body.author || '').trim().slice(0, 40) || 'Anonymous Citizen';
+    const author = String(req.body.author || '').trim().slice(0, 40) || 'Anonymous';
     const desk = String(req.body.desk || 'general').trim().slice(0, 32);
+    const whenLabel = String(req.body.when || '').trim().slice(0, 40);
+    const place = String(req.body.place || '').trim().slice(0, 60);
+    // The "now" line doubles as the headline: it's what lists and share
+    // previews show, and what the duplicate check compares.
+    const headline = nowText.slice(0, 180);
 
-    if (headline.length < 10) {
-      return res.status(400).json({ error: 'too_short', message: 'A headline needs at least 10 characters.' });
+    if (thenText.length < 5) {
+      return res.status(400).json({ error: 'too_short', message: 'Say a little about then.' });
     }
-    if (headline.length > 180) {
-      return res.status(400).json({ error: 'too_long', message: 'Keep the headline under 180 characters.' });
+    if (nowText.length < 5) {
+      return res.status(400).json({ error: 'too_short', message: 'Say a little about now.' });
     }
-    if (body.length > 1200) {
-      return res.status(400).json({ error: 'too_long', message: 'Keep the supporting text under 1200 characters.' });
+    if (thenText.length > 300 || nowText.length > 300) {
+      return res.status(400).json({ error: 'too_long', message: 'Keep then and now under 300 characters each. The longer version goes in the box below.' });
+    }
+    if (body.length > 2000) {
+      return res.status(400).json({ error: 'too_long', message: 'Keep the longer account under 2000 characters.' });
     }
 
     const dupe = await q(`SELECT slug FROM posts WHERE lower(headline) = lower($1) LIMIT 1`, [headline]);
     if (dupe.rows.length) {
       return res.status(409).json({
         error: 'duplicate',
-        message: 'Someone already filed this one.',
+        message: 'Someone already posted that exact line.',
         slug: dupe.rows[0].slug,
       });
     }
 
-    const flagged = needsReview(`${headline}\n${body}`);
+    const flagged = needsReview(`${thenText}\n${nowText}\n${body}`);
     const status = REQUIRE_APPROVAL || flagged ? 'pending' : 'live';
 
     const r = await q(
-      `INSERT INTO posts (slug, headline, body, author, desk, status, submitter)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [slugify(headline), headline, body, author, desk, status, voter],
+      `INSERT INTO posts (slug, headline, body, author, desk, status, submitter, then_text, now_text, when_label, place)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [slugify(headline), headline, body, author, desk, status, voter, thenText, nowText, whenLabel, place],
     );
 
     // Mail the desk. Deliberately not awaited: delivery must not delay
@@ -370,6 +385,32 @@ app.post('/api/posts/:id/reality', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Afterwards: newsletter signup. Stores the address, tells the desk.
+app.post('/api/subscribe', async (req, res, next) => {
+  try {
+    const gate = rateLimit({ key: `subscribe:${clientIp(req)}`, limit: 5, windowMs: 60 * 60 * 1000 });
+    if (!gate.ok) return res.status(429).json({ error: 'rate_limited' });
+    const email = String(req.body.email || '').trim().toLowerCase().slice(0, 254);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'bad_email', message: 'That does not look like an email address.' });
+    }
+    const r = await q(`INSERT INTO subscribers (email) VALUES ($1) ON CONFLICT DO NOTHING RETURNING email`, [email]);
+    if (r.rows.length) notifySubscriber(email);
+    res.json({ ok: true, message: r.rows.length ? "You're on the list." : "You're already on the list." });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/admin/subscribers', requireAdmin, async (req, res, next) => {
+  try {
+    const r = await q(`SELECT email, created_at FROM subscribers ORDER BY created_at DESC`);
+    if (req.query.format === 'csv') {
+      res.type('text/csv').send('email,created_at\n' + r.rows.map((x) => `${x.email},${x.created_at.toISOString()}`).join('\n'));
+      return;
+    }
+    res.json({ subscribers: r.rows });
+  } catch (e) { next(e); }
+});
+
 // Plausibility Index — how likely is this, really?
 app.post('/api/posts/:id/plausibility', async (req, res, next) => {
   try {
@@ -413,7 +454,7 @@ app.post('/api/posts/:id/comments', async (req, res, next) => {
 
     const voter = voterOf(req, res);
     const body = String(req.body.body || '').trim();
-    const author = String(req.body.author || '').trim().slice(0, 40) || 'Anonymous Citizen';
+    const author = String(req.body.author || '').trim().slice(0, 40) || 'Anonymous';
     if (body.length < 2) return res.status(400).json({ error: 'too_short' });
     if (body.length > 1000) return res.status(400).json({ error: 'too_long' });
 

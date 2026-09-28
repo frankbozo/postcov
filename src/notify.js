@@ -52,7 +52,7 @@ async function send({ subject, html, text }) {
 }
 
 /**
- * Mail yourself about a freshly filed proposal.
+ * Mail yourself about a new post.
  * Call WITHOUT await — it resolves on its own and swallows its errors.
  *
  * @param {object} post   the row returned by the INSERT
@@ -62,8 +62,8 @@ export function notifySubmission(post, pending) {
   if (!notifyEnabled) return;
 
   const headline = trim(post.headline, 180);
-  const body = trim(post.body, 600);
-  const author = post.author || 'Anonymous Citizen';
+  const body = trim([post.then_text && `Then: ${post.then_text}`, post.now_text && `Now: ${post.now_text}`, post.body].filter(Boolean).join('\n\n'), 900);
+  const author = post.author || 'Anonymous';
   const desk = post.desk || 'general';
 
   const adminUrl = `${ORIGIN || ''}/admin`;
@@ -106,4 +106,15 @@ export function notifySubmission(post, pending) {
   send({ subject, html, text }).catch((e) => {
     console.warn('[mail] submission alert failed:', e.message);
   });
+}
+
+/** A new Afterwards subscriber. Call without await. */
+export function notifySubscriber(email) {
+  if (!notifyEnabled) return;
+  send({
+    subject: `[afterwards] new subscriber`,
+    text: `${email} signed up for Afterwards.\n\nExport the list: ${ORIGIN || ''}/api/admin/subscribers?format=csv`,
+    html: `<p style="font:16px/1.5 Georgia,serif">${esc(email)} signed up for Afterwards.</p>
+      <p style="font:13px ui-monospace,monospace"><a href="${esc(ORIGIN || '')}/api/admin/subscribers?format=csv">Export the list</a></p>`,
+  }).catch((e) => console.warn('[mail] subscriber alert failed:', e.message));
 }

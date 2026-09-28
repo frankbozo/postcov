@@ -46,21 +46,25 @@ export async function loadSeed(file = DEFAULT_SEED_FILE) {
 export async function insertRows(rows) {
   let added = 0;
   for (const row of rows) {
-    const headline = String(row.headline || '').trim();
-    if (headline.length < 10) continue;
+    const headline = String(row.headline || row.now || '').trim().slice(0, 180);
+    if (headline.length < 5) continue;
 
     const exists = await q('SELECT 1 FROM posts WHERE lower(headline) = lower($1)', [headline]);
     if (exists.rows.length) continue;
 
     await q(
-      `INSERT INTO posts (slug, headline, body, author, desk, status)
-       VALUES ($1,$2,$3,$4,$5,'live')`,
+      `INSERT INTO posts (slug, headline, body, author, desk, status, then_text, now_text, when_label, place)
+       VALUES ($1,$2,$3,$4,$5,'live',$6,$7,$8,$9)`,
       [
         slugify(headline),
         headline,
         String(row.body || '').trim(),
-        String(row.author || 'Anonymous Citizen').trim().slice(0, 40),
+        String(row.author || 'Anonymous').trim().slice(0, 40),
         String(row.desk || 'general').trim().slice(0, 32),
+        String(row.then || '').trim().slice(0, 300),
+        String(row.now || '').trim().slice(0, 300),
+        String(row.when || '').trim().slice(0, 40),
+        String(row.place || '').trim().slice(0, 60),
       ],
     );
     added += 1;

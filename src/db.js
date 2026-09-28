@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS posts (
   slug          TEXT UNIQUE NOT NULL,
   headline      TEXT NOT NULL,
   body          TEXT NOT NULL DEFAULT '',
-  author        TEXT NOT NULL DEFAULT 'Anonymous Citizen',
+  author        TEXT NOT NULL DEFAULT 'Anonymous',
   desk          TEXT NOT NULL DEFAULT 'general',
   status        TEXT NOT NULL DEFAULT 'pending',
   ups           INTEGER NOT NULL DEFAULT 0,
@@ -136,6 +136,18 @@ export async function migrate() {
   // Indexes on added columns go here, never in SCHEMA: on a database that
   // predates the column, SCHEMA runs before the ALTER above.
   await q(`CREATE INDEX IF NOT EXISTS posts_status_publish ON posts (status, publish_at)`);
+  // Then / Now: the archive's native shape. "then_text" is the March 2020
+  // line, "now_text" the today line; headline stays as the one-line summary
+  // used in lists and share previews. when_label and place are free text.
+  await q(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS then_text TEXT NOT NULL DEFAULT ''`);
+  await q(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS now_text TEXT NOT NULL DEFAULT ''`);
+  await q(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS when_label TEXT NOT NULL DEFAULT ''`);
+  await q(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS place TEXT NOT NULL DEFAULT ''`);
+  // Afterwards, the newsletter. Just the addresses; sending happens elsewhere.
+  await q(`CREATE TABLE IF NOT EXISTS subscribers (
+    email      TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
   console.log('[db] schema ready');
 }
 
