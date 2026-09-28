@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+
+# This site publishes satire. Its contents are fiction submitted by members
+# of the public and must not be indexed, summarised or republished as news.
