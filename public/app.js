@@ -44,14 +44,15 @@ const longDate = () =>
 /* ---------- shared chrome ---------- */
 
 const PROMPTS = [
-  { value: 'general', label: 'Anything' },
+  { value: 'general', label: 'Everything' },
   { value: 'work', label: 'Work' },
-  { value: 'money', label: 'Money' },
+  { value: 'love', label: 'Love' },
+  { value: 'grief', label: 'Grief' },
   { value: 'health', label: 'Health' },
-  { value: 'people', label: 'Relationships' },
-  { value: 'kids', label: 'Kids and school' },
-  { value: 'miss', label: 'Things I miss' },
-  { value: 'dontmiss', label: "Things I don't" },
+  { value: 'family', label: 'Family' },
+  { value: 'identity', label: 'Identity' },
+  { value: 'belonging', label: 'Belonging' },
+  { value: 'gained', label: 'What I gained' },
 ];
 const promptLabel = (v) => (PROMPTS.find((p) => p.value === v) || PROMPTS[0]).label;
 
@@ -60,12 +61,12 @@ function chrome(current, inner) {
 <header class="masthead">
   <div class="wrap masthead__inner">
     <h1 class="masthead__title"><a href="/">post<span>cov</span></a></h1>
-    <p class="masthead__tag">Life after COVID. It's not the same.</p>
+    <p class="masthead__tag">We went back to normal. But did we?</p>
   </div>
   <div class="wrap">
     <nav class="sections" aria-label="Sections">
-      <a href="/" ${current === 'feed' ? 'aria-current="page"' : ''}>Stories</a>
-      <a href="/submit" ${current === 'submit' ? 'aria-current="page"' : ''}>Tell yours</a>
+      <a href="/" ${current === 'feed' ? 'aria-current="page"' : ''}>The archive</a>
+      <a href="/submit" ${current === 'submit' ? 'aria-current="page"' : ''}>Add yours</a>
       <span class="spacer"></span>
       <a href="/about" ${current === 'about' ? 'aria-current="page"' : ''}>About</a>
     </nav>
@@ -75,10 +76,18 @@ function chrome(current, inner) {
 <footer>
   <div class="wrap">
     <div class="links mono">
-      <a href="/about">About</a><a href="/terms">Terms &amp; Privacy</a><a href="/submit">Tell yours</a>
+      <a href="/about">About</a><a href="/terms">Terms &amp; Privacy</a><a href="/submit">Add yours</a>
     </div>
+    <form class="afterwards" id="afterwards">
+      <label for="aw-email"><strong>Afterwards</strong>, an occasional letter from the archive. No spam, no selling.</label>
+      <div class="afterwards__row">
+        <input type="email" id="aw-email" name="email" required placeholder="you@example.com" autocomplete="email">
+        <button class="btn" type="submit">Subscribe</button>
+      </div>
+    </form>
     <p class="disclaimer">
-      Everything here is someone's own experience, posted anonymously. Nothing is medical advice.
+      Everything here is someone's own experience, posted anonymously. There is no single pandemic
+      experience, and this is not a place to argue about whose was real. Nothing here is medical advice.
     </p>
     <p class="disclaimer">
       If you're struggling: in Canada call or text <strong>988</strong>. In the US, <strong>988</strong> too.
@@ -91,15 +100,38 @@ function chrome(current, inner) {
 
 function render(current, inner) {
   app.innerHTML = chrome(current, inner);
+  document.getElementById('afterwards').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    f.querySelector('button').disabled = true;
+    try {
+      const r = await api('/api/subscribe', { method: 'POST', body: { email: f.email.value } });
+      flash(r.message, true);
+      f.reset();
+    } catch (err) { flash(err.message); }
+    f.querySelector('button').disabled = false;
+  });
 }
 
 /* ---------- post rendering ---------- */
 
+const stamp = (p) => [p.when, p.place].filter(Boolean).join(' &middot; ') || ago(p.createdAt);
+
+function thenNow(p, clamp) {
+  const cut = (t) => (clamp && t.length > clamp ? `${esc(t.slice(0, clamp))}&hellip;` : esc(t));
+  if (!p.then && !p.now) return p.body ? `<p class="item__lede">${cut(p.body)}</p>` : '';
+  return `
+    <dl class="tn">
+      <dt>Then</dt><dd>${cut(p.then)}</dd>
+      <dt>Now</dt><dd>${cut(p.now)}</dd>
+    </dl>`;
+}
+
 function itemMarkup(p) {
   return `
 <li class="item" data-id="${p.id}" data-slug="${esc(p.slug)}">
-  <h2 class="item__head"><a href="/p/${esc(p.slug)}">${esc(p.headline)}</a></h2>
-  ${p.body ? `<p class="item__lede">${esc(p.body.slice(0, 260))}${p.body.length > 260 ? '&hellip;' : ''}</p>` : ''}
+  <p class="item__stamp mono">${stamp(p)}</p>
+  ${thenNow(p, 260)}
   <div class="item__meta">
     <button class="metoo vote-up" aria-pressed="${p.myVote === 1}">
       <span class="metoo__label">Me too</span><span class="metoo__n num">${Math.max(0, p.ups)}</span>
@@ -107,11 +139,10 @@ function itemMarkup(p) {
     <span class="sep">&middot;</span>
     <span>${esc(p.author)}</span>
     <span class="sep">&middot;</span>
-    <span>${promptLabel(p.desk)}</span>
+    <a href="/?desk=${esc(p.desk)}">${promptLabel(p.desk)}</a>
     <span class="sep">&middot;</span>
-    <span>${ago(p.createdAt)}</span>
-    <span class="sep">&middot;</span>
-    <a href="/p/${esc(p.slug)}">${p.commentCount} ${p.commentCount === 1 ? 'reply' : 'replies'}</a>
+    ${p.body ? `<a href="/p/${esc(p.slug)}">Full story</a><span class="sep">&middot;</span>` : ''}
+    <a href="/p/${esc(p.slug)}">${p.commentCount ? `${p.commentCount} ${p.commentCount === 1 ? 'reply' : 'replies'}` : 'Reply'}</a>
     <span class="sep">&middot;</span>
     <button class="share-link" type="button">Share</button>
   </div>
@@ -163,22 +194,33 @@ function flash(message, ok = false) {
    ================================================================= */
 
 async function viewFeed() {
-  let sort = new URLSearchParams(location.search).get('sort') || 'hot';
-  if (!['hot', 'new', 'top'].includes(sort)) sort = 'hot';
+  const params = new URLSearchParams(location.search);
+  let sort = params.get('sort') || 'new';
+  if (!['hot', 'new', 'top'].includes(sort)) sort = 'new';
+  const desk = PROMPTS.some((o) => o.value === params.get('desk') && o.value !== 'general') ? params.get('desk') : '';
 
   render('feed', `
-    <div class="article">
+    <div class="article article--hero">
       <div class="article__body">
         <p>
-          Something changed in 2020 and it never changed back. Work, money, friends, health,
-          how the days feel. Say what's different for you. Read what's different for other people.
+          The pandemic ended differently for everyone. Some of us lost people. Some lost years.
+          Some changed careers, cities, relationships or beliefs. Some found a different way to live.
+          The world reopened, but it did not reset.
+        </p>
+        <p>
+          Postcov is a living record of what changed, and a place to think about what comes next.
         </p>
       </div>
-      <a class="btn" href="/submit">Tell your story</a>
+      <a class="btn btn--big" href="/submit">Tell us what never changed back</a>
+    </div>
+    <div class="themes" role="navigation" aria-label="Themes">
+      <a href="/" ${!desk ? 'aria-current="page"' : ''}>Everything</a>
+      ${PROMPTS.filter((o) => o.value !== 'general').map((o) =>
+        `<a href="/?desk=${o.value}" ${desk === o.value ? 'aria-current="page"' : ''}>${o.label}</a>`).join('')}
     </div>
     <div class="sorts">
-      <button data-sort="hot" aria-pressed="${sort === 'hot'}">Talked about</button>
       <button data-sort="new" aria-pressed="${sort === 'new'}">Newest</button>
+      <button data-sort="hot" aria-pressed="${sort === 'hot'}">Talked about</button>
       <button data-sort="top" aria-pressed="${sort === 'top'}">Most "me too"</button>
       <span class="count" id="count"></span>
     </div>
@@ -191,26 +233,29 @@ async function viewFeed() {
 
   document.querySelector('.sorts').addEventListener('click', (e) => {
     const b = e.target.closest('[data-sort]');
-    if (b) location.search = `?sort=${b.dataset.sort}`;
+    if (!b) return;
+    const next = new URLSearchParams(location.search);
+    next.set('sort', b.dataset.sort);
+    location.search = next.toString();
   });
 
   try {
-    const data = await api(`/api/posts?sort=${sort}`);
+    const data = await api(`/api/posts?sort=${sort}${desk ? `&desk=${desk}` : ''}`);
     document.getElementById('loading').remove();
-    document.getElementById('count').textContent = `${data.total} ${data.total === 1 ? 'story' : 'stories'}`;
+    document.getElementById('count').textContent = `${data.total} ${data.total === 1 ? 'entry' : 'entries'}`;
 
     if (!data.posts.length) {
       feed.replaceWith(h(`
         <div class="empty">
-          <h2>Nobody has posted yet.</h2>
-          <p>Go first. It can be two sentences.</p>
-          <a class="btn" href="/submit">Tell your story</a>
+          <h2>${desk ? 'Nothing under this theme yet.' : 'Nobody has posted yet.'}</h2>
+          <p>Go first. Two sentences is plenty.</p>
+          <a class="btn" href="/submit${desk ? `?about=${desk}` : ''}">Add yours</a>
         </div>`));
       return;
     }
     feed.innerHTML = data.posts.map(itemMarkup).join('');
   } catch (err) {
-    document.getElementById('loading').textContent = 'Could not load stories. Refresh to try again.';
+    document.getElementById('loading').textContent = 'Could not load the archive. Refresh to try again.';
   }
 }
 
@@ -220,7 +265,7 @@ async function viewPost() {
   try {
     data = await api(`/api/posts/${encodeURIComponent(BOOT.slug)}`);
   } catch {
-    render('post', '<div class="empty"><h2>No such story.</h2><p>It may have been removed.</p><a class="btn btn--quiet" href="/">Back to stories</a></div>');
+    render('post', '<div class="empty"><h2>No such entry.</h2><p>It may have been removed.</p><a class="btn btn--quiet" href="/">Back to the archive</a></div>');
     return;
   }
 
@@ -229,9 +274,9 @@ async function viewPost() {
   render('post', `
   <article class="article" data-id="${p.id}" data-slug="${esc(p.slug)}">
     <p class="article__slug mono">
-      ${promptLabel(p.desk)} &middot; ${esc(p.author)} &middot; ${ago(p.createdAt)}
+      ${stamp(p)} &middot; ${esc(p.author)} &middot; <a href="/?desk=${esc(p.desk)}">${promptLabel(p.desk)}</a>
     </p>
-    <h2 class="article__head">${esc(p.headline)}</h2>
+    ${p.then || p.now ? thenNow(p) : `<h2 class="article__head">${esc(p.headline)}</h2>`}
     <div class="article__body">${p.body ? esc(p.body).split('\n').filter(Boolean).map((x) => `<p>${x}</p>`).join('') : ''}</div>
 
     <div class="actionbar">
@@ -308,50 +353,68 @@ function viewSubmit() {
   const preset = new URLSearchParams(location.search).get('about') || 'general';
   render('submit', `
     <div class="article">
-      <p class="article__slug mono">Your story</p>
-      <h2 class="article__head">What's different now?</h2>
+      <p class="article__slug mono">Add to the archive</p>
+      <h2 class="article__head">What changed for you that never changed back?</h2>
       <p class="article__body">
-        Doesn't have to be polished. Doesn't have to be long. Nobody will know it's you.
+        Two lines is enough. The longer version is welcome but optional. Nobody will know it's you.
       </p>
     </div>
     <form class="form" id="submit-form">
       <div class="field">
-        <label for="desk">It's about</label>
-        <select id="desk" name="desk">
-          ${PROMPTS.map((o) => `<option value="${o.value}" ${o.value === preset ? 'selected' : ''}>${o.label}</option>`).join('')}
-        </select>
+        <label for="then">Then</label>
+        <textarea id="then" name="then" required minlength="5" maxlength="300" rows="2"
+                  placeholder="March 2020: I assumed we'd be home for two weeks."></textarea>
       </div>
       <div class="field">
-        <label for="headline">In one line</label>
-        <input type="text" id="headline" name="headline" required minlength="10" maxlength="180"
-               placeholder="I still don't go into the office and I'm not sure I ever will">
+        <label for="now">Now</label>
+        <textarea id="now" name="now" required minlength="5" maxlength="300" rows="2"
+                  placeholder="Today: I live in another city and don't do the same job."></textarea>
       </div>
       <div class="field">
-        <label for="body">The rest of it</label>
-        <textarea id="body" name="body" maxlength="1200"
-                  placeholder="What it was like before, what it's like now, and what you make of that."></textarea>
+        <label for="body">The longer version <span class="hint">(optional)</span></label>
+        <textarea id="body" name="body" maxlength="2000" rows="6"
+                  placeholder="What it was like, what happened, what you make of it now."></textarea>
       </div>
-      <div class="field">
-        <label for="author">Name <span class="hint">(optional, use any name you like)</span></label>
-        <input type="text" id="author" name="author" maxlength="40" placeholder="Anonymous">
+      <div class="field field--row">
+        <div>
+          <label for="when">When <span class="hint">(optional)</span></label>
+          <input type="text" id="when" name="when" maxlength="40" placeholder="April 2020">
+        </div>
+        <div>
+          <label for="place">Where <span class="hint">(optional)</span></label>
+          <input type="text" id="place" name="place" maxlength="60" placeholder="Toronto">
+        </div>
+      </div>
+      <div class="field field--row">
+        <div>
+          <label for="desk">Theme</label>
+          <select id="desk" name="desk">
+            ${PROMPTS.map((o) => `<option value="${o.value}" ${o.value === preset ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="author">Name <span class="hint">(optional, any name)</span></label>
+          <input type="text" id="author" name="author" maxlength="40" placeholder="Anonymous">
+        </div>
       </div>
       <p class="notice">
-        Goes up as soon as you post it. Please don't include anyone's real name but your own.
+        Goes into the archive as soon as you post it. Please don't include anyone's real name but your own.
       </p>
-      <button class="btn" type="submit">Post it</button>
+      <button class="btn" type="submit">Add to the archive</button>
     </form>
   `);
 
   document.getElementById('submit-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = e.target;
-    const btn = f.querySelector('button');
+    const btn = f.querySelector('button[type=submit]');
     btn.disabled = true;
     try {
       const r = await api('/api/posts', {
         method: 'POST',
         body: {
-          headline: f.headline.value, body: f.body.value,
+          then: f.then.value, now: f.now.value, body: f.body.value,
+          when: f.when.value, place: f.place.value,
           author: f.author.value, desk: f.desk.value,
         },
       });
@@ -375,22 +438,39 @@ function viewAbout() {
   render('about', `
     <div class="article">
       <p class="article__slug mono">About</p>
-      <h2 class="article__head">Why this exists</h2>
+      <h2 class="article__head">What happened to us, and what we build next</h2>
       <div class="article__body">
         <p>
           Everyone agrees the pandemic ended. Fewer people agree that things went back to normal.
-          Some of us work differently, spend differently, see friends less, trust less, or feel
-          tired in a way that doesn't have a name yet. It's rarely said out loud because there's
+          Some of us work differently, spend differently, see friends less, trust less, grieve
+          people we never got to mourn properly, or live with an illness everyone else calls over.
+          Some of us found a smaller life we prefer. Most of it goes unsaid, because there is
           nowhere obvious to say it.
         </p>
-        <p>This is somewhere to say it.</p>
         <p>
-          <strong>Post</strong> what changed for you. <strong>Reply</strong> to other people's.
-          Tap <strong>Me too</strong> when something lands. No accounts, no real names.
+          Postcov is somewhere to say it. It is a living record of what the pandemic changed,
+          told by the people it happened to, one entry at a time.
+        </p>
+        <p>
+          <strong>The archive</strong> is built from one question: what changed for you that
+          never changed back? Answer it as a Then and a Now, add the longer story if you want,
+          and it joins the record under a theme. Tap <strong>Me too</strong> when someone else's
+          entry could have been yours. Reply when you have something to say back.
+        </p>
+        <p>
+          <strong>Coming later:</strong> a journal of longer essays and interviews, and small
+          in-person gatherings built around the same question. The archive comes first, because
+          it tells us which of those to build.
+        </p>
+        <p>
+          There is no single pandemic experience. Some people lost family. Others lost businesses,
+          education, health, community or trust. Some found relief. Some are still unwell. Some
+          never want to talk about it again. That plurality is the project, and it is the one
+          editorial rule here: nobody's version gets argued out of the room.
         </p>
         <p>
           Nothing here is medical advice, and nothing here is a study. It's people comparing notes.
-          Questions or takedowns: <a href="mailto:ryan@hypnoticmindscapes.com">ryan@hypnoticmindscapes.com</a>.
+          Questions, partnerships or takedowns: <a href="mailto:ryan@hypnoticmindscapes.com">ryan@hypnoticmindscapes.com</a>.
         </p>
       </div>
     </div>`);
@@ -430,7 +510,7 @@ function viewNotFound() {
   render('notfound', `
     <div class="empty">
       <h2>No such page.</h2>
-      <a class="btn btn--quiet" href="/">Back to stories</a>
+      <a class="btn btn--quiet" href="/">Back to the archive</a>
     </div>`);
 }
 
@@ -439,7 +519,7 @@ function viewError() {
     <div class="empty">
       <h2>Something broke on our end.</h2>
       <p>Not your fault. Try again in a moment.</p>
-      <a class="btn btn--quiet" href="/">Back to stories</a>
+      <a class="btn btn--quiet" href="/">Back to the archive</a>
     </div>`);
 }
 
